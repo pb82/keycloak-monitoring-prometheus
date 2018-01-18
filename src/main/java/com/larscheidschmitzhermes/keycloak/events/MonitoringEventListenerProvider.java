@@ -1,98 +1,30 @@
 package com.larscheidschmitzhermes.keycloak.events;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-
-import org.jboss.logging.Logger;
+import io.prometheus.client.Gauge;
 import org.keycloak.events.Event;
 import org.keycloak.events.EventListenerProvider;
 import org.keycloak.events.admin.AdminEvent;
 
 public class MonitoringEventListenerProvider implements EventListenerProvider {
-    private static final Logger logger = Logger.getLogger(MonitoringEventListenerProvider.class);
-    // metrics should be used with this: https://github.com/larscheid-schmitzhermes/prometheus-filesystem-exporter#usage
-    // therefore names must look like this: metric_name;label=value;label=value
-    private final char DELIMITER = ';';
-    private final char LABEL_VALUE_DELIMITER = '=';
-    private final String REALM = "realm";
-    private final String TYPE = "type";
-    private final String OPERATION = "operation";
-    private final String RESOURCE = "resource";
+  static final Gauge counter = Gauge.build().name("events_counted").help("Events counted").register();
 
-    private String eventsDirectory;
+  public double getEventsCount() {
+    return counter.get();
+  }
 
-    public MonitoringEventListenerProvider(String eventsDirectory) {
-        this.eventsDirectory = eventsDirectory;
-    }
+  @Override
+  public void onEvent(Event event) {
+    System.out.println("--- User event received: " + event.getType());
+    counter.inc();
+  }
 
-    @Override
-    public void onEvent(Event event) {
-        increaseCounter(getOrCreateCounterFile(generateMetricName(event)));
-    }
+  @Override
+  public void onEvent(AdminEvent event, boolean includeRepresentation) {
+    System.out.println("--- Admin event received: " + event.getOperationType().name());
+    counter.inc();
+  }
 
-    @Override
-    public void onEvent(AdminEvent event, boolean includeRepresentation) {
-        increaseCounter(getOrCreateCounterFile(generateMetricName(event)));
-    }
-
-    private String generateMetricName(Event event) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("keycloak_events_total");
-        sb.append(DELIMITER);
-        sb.append(generateLabel(REALM, event.getRealmId()));
-        sb.append(DELIMITER);
-        sb.append(generateLabel(TYPE, event.getType().toString()));
-        return sb.toString();
-    }
-
-    private String generateMetricName(AdminEvent event) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("keycloak_admin_events_total");
-        sb.append(DELIMITER);
-        sb.append(generateLabel(REALM, event.getRealmId()));
-        sb.append(DELIMITER);
-        sb.append(generateLabel(OPERATION, event.getOperationType().toString()));
-        sb.append(DELIMITER);
-        sb.append(generateLabel(RESOURCE, event.getResourceType().toString()));
-        return sb.toString();
-    }
-
-    private String generateLabel(String name, String value) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(name);
-        sb.append(LABEL_VALUE_DELIMITER);
-        sb.append(value);
-        return sb.toString();
-    }
-
-    private File getOrCreateCounterFile(String fileName) {
-        File f = new File(eventsDirectory + File.separator + fileName);
-        if (!f.exists()) {
-            try {
-                logger.debug("File for name: " + fileName + "does not exist, creating");
-                f.createNewFile();
-                Files.write(f.toPath(), "0".getBytes(Charset.forName("UTF-8")));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        return f;
-    }
-
-    private void increaseCounter(File counterFile) {
-        try {
-            Long count = Long.parseLong(Files.readAllLines(counterFile.toPath()).get(0));
-            count++;
-            Files.write(counterFile.toPath(), count.toString().getBytes(Charset.forName("UTF-8")));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Override
-    public void close() {
-        //nothing to close
-    }
+  @Override
+  public void close() {
+  }
 }
